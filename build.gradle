@@ -12,7 +12,6 @@ dependencies {
     compile files('lib/X509_2017.jar')
     compile files('lib/bcprov-jdk15on-157.jar')
     compile files('lib/bcpkix-jdk15on-157.jar')
-    //compile files('lib/iaik_jce.jar')
 }
 
 mainClassName = 'code.X509'
