@@ -1,14 +1,18 @@
 package implementation;
 
 import code.GuiException;
+import code.X509;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
 import org.bouncycastle.jcajce.PKCS12StoreParameter;
 import org.bouncycastle.jcajce.provider.keystore.PKCS12;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
+import org.bouncycastle.openssl.jcajce.JcaPEMWriter;
 import org.bouncycastle.operator.OperatorCreationException;
+import sun.misc.BASE64Encoder;
 import sun.security.ec.ECPrivateKeyImpl;
+import sun.security.provider.X509Factory;
 import x509.v3.CodeV3;
 
 import java.io.*;
@@ -32,6 +36,7 @@ import static implementation.GuiHelper.PLACE_OF_BIRTH_ID;
 public class MyCode extends CodeV3 {
 
     private KeyStore keyStore;
+    private X509Certificate currentCertificate;
 
     private static final int CERTIFICATE_POLICIES_ID = 3;
     private static final int SUBJECT_DIRECTORY_ATTRIBUTES_ID = 7;
@@ -76,11 +81,12 @@ public class MyCode extends CodeV3 {
     public int loadKeypair(String s) {
         try {
             Key key = keyStore.getKey(s, new char[0]);
-            if(key instanceof ECPrivateKeyImpl) {
-                GuiHelper.setCertificatePublicKey((ECPrivateKeyImpl)key);
+            if (key instanceof ECPrivateKeyImpl) {
+                GuiHelper.setCertificatePublicKey((ECPrivateKeyImpl) key);
             }
 
             X509Certificate certificate = (X509Certificate) keyStore.getCertificate(s);
+            currentCertificate = certificate;
 
             GuiHelper.setCertificateInfo(certificate);
             GuiHelper.setCertificateSubject(certificate.getSubjectX500Principal().getName());
@@ -89,6 +95,8 @@ public class MyCode extends CodeV3 {
                 //not signed
                 return 0;
             }
+
+            certificate.checkValidity();
 
             GuiHelper.setCertificateIssuer(certificate.getIssuerX500Principal().getName());
             GuiHelper.setCertificateExtensions(certificate);
@@ -165,7 +173,7 @@ public class MyCode extends CodeV3 {
 
             Enumeration<String> enumeration = keyStoreImport.aliases();
 
-            while(enumeration.hasMoreElements()) {
+            while (enumeration.hasMoreElements()) {
                 String alias = enumeration.nextElement();
                 keyStore.setKeyEntry(s, keyStoreImport.getKey(alias, s2.toCharArray()), new char[0], keyStoreImport
                         .getCertificateChain(alias));
@@ -200,17 +208,46 @@ public class MyCode extends CodeV3 {
 
     @Override
     public boolean signCertificate(String s, String s1) {
+        try {
+            Key issuerPrivateKey = keyStore.getKey(s, new char[0]);
+
+        } catch (KeyStoreException | NoSuchAlgorithmException | UnrecoverableKeyException e) {
+            e.printStackTrace();
+        }
         return false;
     }
 
     @Override
     public boolean importCertificate(File file, String s) {
-        return false;
+        try {
+            CertificateFactory certificateFactory = CertificateFactory.getInstance("X.509");
+            X509Certificate certificate = (X509Certificate) certificateFactory.generateCertificate(new FileInputStream(file));
+            keyStore.setCertificateEntry(s, certificate);
+        } catch (CertificateException | FileNotFoundException | KeyStoreException e) {
+            e.printStackTrace();
+            return false;
+        }
+        return true;
     }
 
     @Override
     public boolean exportCertificate(File file, int i) {
-        return false;
+        try {
+            if (i == 0) {
+                OutputStream outputStream = new FileOutputStream(file);
+                outputStream.write(currentCertificate.getEncoded());
+                outputStream.flush();
+                outputStream.close();
+            } else {
+                FileWriter fileWriter = new FileWriter(file);
+                JcaPEMWriter pemWriter = new JcaPEMWriter(fileWriter);
+                pemWriter.writeObject(currentCertificate);
+            }
+        } catch (CertificateEncodingException | IOException e) {
+            e.printStackTrace();
+            return false;
+        }
+        return true;
     }
 
     @Override
@@ -235,6 +272,7 @@ public class MyCode extends CodeV3 {
 
     @Override
     public boolean generateCSR(String s) {
+        //TODO go for the csr request :)
         return false;
     }
 }
