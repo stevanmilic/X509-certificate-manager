@@ -3,6 +3,7 @@ package implementation;
 import code.GuiException;
 import code.X509;
 import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder;
 import org.bouncycastle.jcajce.PKCS12StoreParameter;
@@ -10,6 +11,9 @@ import org.bouncycastle.jcajce.provider.keystore.PKCS12;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.openssl.jcajce.JcaPEMWriter;
 import org.bouncycastle.operator.OperatorCreationException;
+import org.bouncycastle.pkcs.PKCS10CertificationRequest;
+import org.bouncycastle.pkcs.PKCS10CertificationRequestBuilder;
+import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
 import sun.misc.BASE64Encoder;
 import sun.security.ec.ECPrivateKeyImpl;
 import sun.security.provider.X509Factory;
@@ -20,13 +24,14 @@ import java.math.BigInteger;
 import java.security.*;
 import java.security.cert.*;
 import java.security.cert.Certificate;
+import java.security.interfaces.RSAPrivateKey;
 import java.text.ParseException;
 import java.util.Collections;
 import java.util.Enumeration;
+import java.util.LinkedList;
 import java.util.List;
 
-import static implementation.GuiHelper.COUNTRY_OF_CITIZENSHIP_ID;
-import static implementation.GuiHelper.PLACE_OF_BIRTH_ID;
+import static implementation.GuiHelper.*;
 
 
 /**
@@ -35,21 +40,17 @@ import static implementation.GuiHelper.PLACE_OF_BIRTH_ID;
 
 public class MyCode extends CodeV3 {
 
-    private KeyStore keyStore;
+    private KeyStore localKeyStore;
     private X509Certificate currentCertificate;
-
-    private static final int CERTIFICATE_POLICIES_ID = 3;
-    private static final int SUBJECT_DIRECTORY_ATTRIBUTES_ID = 7;
-    private static final int INHABIT_ANY_POLICY_ID = 13;
-
+    private PKCS10CertificationRequest currentCertificationRequest;
 
     public MyCode(boolean[] algorithm_conf, boolean[] extensions_conf) throws GuiException {
         super(algorithm_conf, extensions_conf);
         Security.addProvider(new BouncyCastleProvider());
         GuiHelper.setAccess(access);
         try {
-            keyStore = KeyStore.getInstance("PKCS12");
-            keyStore.load(null, null);
+            localKeyStore = KeyStore.getInstance("PKCS12");
+            localKeyStore.load(null, null);
         } catch (KeyStoreException | CertificateException | IOException | NoSuchAlgorithmException e) {
             e.printStackTrace();
         }
@@ -58,8 +59,8 @@ public class MyCode extends CodeV3 {
     @Override
     public Enumeration<String> loadLocalKeystore() {
         try {
-            if (keyStore != null) {
-                return keyStore.aliases();
+            if (localKeyStore != null) {
+                return localKeyStore.aliases();
             }
         } catch (KeyStoreException e) {
             e.printStackTrace();
@@ -70,8 +71,8 @@ public class MyCode extends CodeV3 {
     @Override
     public void resetLocalKeystore() {
         try {
-            keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
-            keyStore.load(null, null);
+            localKeyStore = KeyStore.getInstance(KeyStore.getDefaultType());
+            localKeyStore.load(null, null);
         } catch (KeyStoreException | CertificateException | IOException | NoSuchAlgorithmException e) {
             e.printStackTrace();
         }
@@ -80,38 +81,38 @@ public class MyCode extends CodeV3 {
     @Override
     public int loadKeypair(String s) {
         try {
-            Key key = keyStore.getKey(s, new char[0]);
+            Key key = localKeyStore.getKey(s, new char[0]);
             if (key instanceof ECPrivateKeyImpl) {
                 GuiHelper.setCertificatePublicKey((ECPrivateKeyImpl) key);
             }
 
-            X509Certificate certificate = (X509Certificate) keyStore.getCertificate(s);
+            X509Certificate certificate = (X509Certificate) localKeyStore.getCertificate(s);
             currentCertificate = certificate;
 
             GuiHelper.setCertificateInfo(certificate);
             GuiHelper.setCertificateSubject(certificate.getSubjectX500Principal().getName());
 
-            if (certificate.getSignature() == null) {
-                //not signed
+            if(certificate.getSignature() == null) {
+                //certificate not signed
                 return 0;
             }
-
-            certificate.checkValidity();
 
             GuiHelper.setCertificateIssuer(certificate.getIssuerX500Principal().getName());
             GuiHelper.setCertificateExtensions(certificate);
 
-            //certificate is self-signed -> trusted
-            certificate.verify(certificate.getPublicKey());
-            return 2;
+            certificate.checkValidity();
 
+            if(localKeyStore.entryInstanceOf(s, KeyStore.TrustedCertificateEntry.class) || !CertificateHelper.isSelfSigned(certificate)) {
+                //trusted certificate or signed by other certificate
+                return 2;
+            } else {
+                //certificate is self signed
+                return 1;
+            }
         } catch (KeyStoreException | NoSuchAlgorithmException | UnrecoverableKeyException | IOException | ParseException
-                | NoSuchProviderException | CertificateException e) {
+                | CertificateException e) {
             e.printStackTrace();
             return -1;
-        } catch (SignatureException | InvalidKeyException e) {
-            //certificate is signed
-            return 1;
         }
     }
 
@@ -127,7 +128,7 @@ public class MyCode extends CodeV3 {
             BigInteger serialNumber = new BigInteger(access.getSerialNumber());
 
             X509v3CertificateBuilder certificateBuilder = new JcaX509v3CertificateBuilder(
-                    issuer, serialNumber, access.getNotBefore(), access.getNotAfter(), issuer, keyPair.getPublic());
+                    issuer, serialNumber, access.getNotBefore(), access.getNotAfter(), issuer /*subject */, keyPair.getPublic());
 
             CertificateHelper.setCertificatePoliciesExtension(certificateBuilder, access.isCritical(CERTIFICATE_POLICIES_ID),
                     access.getAnyPolicy(), access.getCpsUri());
@@ -144,7 +145,7 @@ public class MyCode extends CodeV3 {
                     access.getPublicKeySignatureAlgorithm());
 
             Certificate[] chain = {certificate};
-            keyStore.setKeyEntry(s, keyPair.getPrivate(), new char[0], chain);
+            localKeyStore.setKeyEntry(s, keyPair.getPrivate(), new char[0], chain);
 
         } catch (NoSuchAlgorithmException | InvalidAlgorithmParameterException | NoSuchProviderException
                 | OperatorCreationException | CertificateException | KeyStoreException | ParseException | IOException e) {
@@ -157,7 +158,7 @@ public class MyCode extends CodeV3 {
     @Override
     public boolean removeKeypair(String s) {
         try {
-            keyStore.deleteEntry(s);
+            localKeyStore.deleteEntry(s);
         } catch (KeyStoreException e) {
             e.printStackTrace();
             return false;
@@ -168,19 +169,18 @@ public class MyCode extends CodeV3 {
     @Override
     public boolean importKeypair(String s, String s1, String s2) {
         try {
-            KeyStore keyStoreImport = KeyStore.getInstance("PKCS12");
-            keyStoreImport.load(new FileInputStream(s1), s2.toCharArray());
+            KeyStore importKeyStore = KeyStore.getInstance("PKCS12");
+            importKeyStore.load(new FileInputStream(s1), s2.toCharArray());
 
-            Enumeration<String> enumeration = keyStoreImport.aliases();
+            Enumeration<String> enumeration = importKeyStore.aliases();
 
             while (enumeration.hasMoreElements()) {
                 String alias = enumeration.nextElement();
-                keyStore.setKeyEntry(s, keyStoreImport.getKey(alias, s2.toCharArray()), new char[0], keyStoreImport
+                localKeyStore.setKeyEntry(s, importKeyStore.getKey(alias, s2.toCharArray()), new char[0], importKeyStore
                         .getCertificateChain(alias));
             }
 
-
-        } catch (KeyStoreException | CertificateException | NoSuchAlgorithmException | IOException | UnrecoverableKeyException e) {
+        } catch (KeyStoreException | CertificateException | NoSuchAlgorithmException | IOException | UnrecoverableEntryException e) {
             e.printStackTrace();
             return false;
         }
@@ -193,7 +193,7 @@ public class MyCode extends CodeV3 {
             KeyStore keyStoreExport = KeyStore.getInstance("PKCS12");
 
             keyStoreExport.load(null, s2.toCharArray());
-            keyStoreExport.setKeyEntry(s, keyStore.getKey(s, new char[0]), s2.toCharArray(), keyStore.getCertificateChain(s));
+            keyStoreExport.setKeyEntry(s, localKeyStore.getKey(s, new char[0]), s2.toCharArray(), localKeyStore.getCertificateChain(s));
 
             OutputStream outputStream = new FileOutputStream(s1 + ".p12");
             keyStoreExport.store(outputStream, s2.toCharArray());
@@ -209,12 +209,26 @@ public class MyCode extends CodeV3 {
     @Override
     public boolean signCertificate(String s, String s1) {
         try {
-            Key issuerPrivateKey = keyStore.getKey(s, new char[0]);
+            Key issuerPrivateKey = localKeyStore.getKey(s, new char[0]);
+            X509Certificate issuerCertificate = (X509Certificate) localKeyStore.getCertificate(s);
+            X500Name issuerName = new X500Name(issuerCertificate.getIssuerX500Principal().getName());
 
-        } catch (KeyStoreException | NoSuchAlgorithmException | UnrecoverableKeyException e) {
+            X509v3CertificateBuilder certificateBuilder = new X509v3CertificateBuilder(issuerName,
+                    issuerCertificate.getSerialNumber(), issuerCertificate.getNotBefore(),
+                    issuerCertificate.getNotAfter(), currentCertificationRequest.getSubject(),
+                    currentCertificationRequest.getSubjectPublicKeyInfo());
+
+            X509Certificate certificate = CertificateHelper.signCertificate(certificateBuilder, (PrivateKey) issuerPrivateKey, s1);
+
+            String alias = localKeyStore.getCertificateAlias(currentCertificate);
+            localKeyStore.setKeyEntry(alias, issuerPrivateKey, new char[0], new Certificate[]{certificate});
+            //localKeyStore.setEntry("signed", new KeyStore.TrustedCertificateEntry(certificate), null);
+
+        } catch (KeyStoreException | NoSuchAlgorithmException | UnrecoverableKeyException | CertificateException | OperatorCreationException e) {
             e.printStackTrace();
+            return false;
         }
-        return false;
+        return true;
     }
 
     @Override
@@ -222,7 +236,7 @@ public class MyCode extends CodeV3 {
         try {
             CertificateFactory certificateFactory = CertificateFactory.getInstance("X.509");
             X509Certificate certificate = (X509Certificate) certificateFactory.generateCertificate(new FileInputStream(file));
-            keyStore.setCertificateEntry(s, certificate);
+            localKeyStore.setEntry(s, new KeyStore.TrustedCertificateEntry(certificate), null);
         } catch (CertificateException | FileNotFoundException | KeyStoreException e) {
             e.printStackTrace();
             return false;
@@ -252,27 +266,71 @@ public class MyCode extends CodeV3 {
 
     @Override
     public String getIssuer(String s) {
+        try {
+            X509Certificate certificate = (X509Certificate) localKeyStore.getCertificate(s);
+            return certificate.getIssuerX500Principal().getName();
+        } catch (KeyStoreException e) {
+            e.printStackTrace();
+        }
         return null;
     }
 
     @Override
     public String getIssuerPublicKeyAlgorithm(String s) {
+        try {
+            X509Certificate certificate = (X509Certificate) localKeyStore.getCertificate(s);
+            return certificate.getSigAlgName();
+        } catch (KeyStoreException e) {
+            e.printStackTrace();
+        }
         return null;
     }
 
     @Override
     public int getRSAKeyLength(String s) {
+        try {
+            Key key = localKeyStore.getKey(s, new char[0]);
+            if(key instanceof RSAPrivateKey) {
+                RSAPrivateKey rsaPrivateKey = (RSAPrivateKey) key;
+            }
+        } catch (KeyStoreException | NoSuchAlgorithmException | UnrecoverableKeyException e) {
+            e.printStackTrace();
+        }
         return 0;
     }
 
     @Override
     public List<String> getIssuers(String s) {
-        return null;
+        List<String> issuers = new LinkedList<>();
+        try {
+            Enumeration<String> enumeration = localKeyStore.aliases();
+
+            while (enumeration.hasMoreElements()) {
+                String alias = enumeration.nextElement();
+                if(!localKeyStore.entryInstanceOf(alias, KeyStore.TrustedCertificateEntry.class) && !CertificateHelper
+                        .isSelfSigned((X509Certificate) localKeyStore.getCertificate(alias))){
+                    issuers.add(alias);
+                }
+            }
+
+        } catch (KeyStoreException e) {
+            e.printStackTrace();
+            issuers = Collections.emptyList();
+        }
+        return issuers;
     }
 
     @Override
     public boolean generateCSR(String s) {
-        //TODO go for the csr request :)
-        return false;
+        try {
+            Key key = localKeyStore.getKey(s, new char[0]);
+            X509Certificate certificate = (X509Certificate) localKeyStore.getCertificate(s);
+            currentCertificationRequest = CertificateHelper.csrRequest((PrivateKey) key, certificate);
+        } catch (KeyStoreException | UnrecoverableKeyException | IOException | NoSuchAlgorithmException | OperatorCreationException e) {
+            e.printStackTrace();
+            currentCertificationRequest = null;
+            return false;
+        }
+        return true;
     }
 }

@@ -1,12 +1,14 @@
 package implementation;
 
 import org.bouncycastle.asn1.*;
+import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.bouncycastle.asn1.x500.X500Name;
 import org.bouncycastle.asn1.x500.X500NameBuilder;
 import org.bouncycastle.asn1.x500.style.BCStyle;
 import org.bouncycastle.asn1.x509.*;
 import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.asn1.x509.PolicyInformation;
+import org.bouncycastle.asn1.x509.PolicyQualifierInfo;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.bouncycastle.jce.ECNamedCurveTable;
@@ -14,16 +16,20 @@ import org.bouncycastle.jce.spec.ECParameterSpec;
 import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
+import org.bouncycastle.pkcs.PKCS10CertificationRequest;
+import org.bouncycastle.pkcs.PKCS10CertificationRequestBuilder;
+import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
 import org.bouncycastle.x509.extension.X509ExtensionUtil;
 
 import java.io.IOException;
 import java.math.BigInteger;
 import java.security.*;
-import java.security.cert.CertificateException;
-import java.security.cert.X509Certificate;
+import java.security.cert.*;
+import java.security.cert.Certificate;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Set;
 import java.util.Vector;
 
 import static org.bouncycastle.jce.provider.BouncyCastleProvider.PROVIDER_NAME;
@@ -163,11 +169,69 @@ class CertificateHelper {
     }
 
 
+    static boolean isSelfSigned(X509Certificate certificate) {
+        //certificate is self-signed -> trusted
+        try {
+            certificate.verify(certificate.getPublicKey());
+        } catch (CertificateException | NoSuchAlgorithmException | NoSuchProviderException | InvalidKeyException | SignatureException e) {
+            e.printStackTrace();
+            return false;
+        }
+        return true;
+    }
+
     static X509Certificate signCertificate(X509v3CertificateBuilder certificateBuilder, PrivateKey privateKey,
                                            String signatureAlgorithm) throws CertificateException, OperatorCreationException {
         ContentSigner contentSigner = new JcaContentSignerBuilder(signatureAlgorithm)
                 .setProvider(PROVIDER_NAME).build(privateKey);
         return new JcaX509CertificateConverter().setProvider(PROVIDER_NAME)
                 .getCertificate(certificateBuilder.build(contentSigner));
+    }
+
+    static PKCS10CertificationRequest csrRequest(PrivateKey privateKey, X509Certificate certificate) throws IOException, OperatorCreationException {
+        PKCS10CertificationRequestBuilder certificationRequestBuilder = new JcaPKCS10CertificationRequestBuilder
+                (certificate.getSubjectX500Principal(), certificate.getPublicKey());
+
+        ExtensionsGenerator extensionsGenerator = new ExtensionsGenerator();
+        byte[] certificatePoliciesBytes = certificate.getExtensionValue(Extension.certificatePolicies.toString());
+        if(certificatePoliciesBytes != null) {
+            CertificatePolicies certificatePolicies = CertificatePolicies.getInstance(X509ExtensionUtil.fromExtensionValue(certificatePoliciesBytes));
+            extensionsGenerator.addExtension(Extension.certificatePolicies, isExtensionCritical(Extension.certificatePolicies,
+                    certificate.getCriticalExtensionOIDs()), certificatePolicies);
+        }
+
+        byte[] inhabitAnyPolicyBytes = certificate.getExtensionValue(Extension.inhibitAnyPolicy.toString());
+        if (inhabitAnyPolicyBytes != null) {
+            ASN1Integer skipCertsInteger = (ASN1Integer) X509ExtensionUtil.fromExtensionValue(inhabitAnyPolicyBytes);
+            extensionsGenerator.addExtension(Extension.inhibitAnyPolicy, isExtensionCritical(Extension.inhibitAnyPolicy,
+                    certificate.getCriticalExtensionOIDs()), skipCertsInteger);
+        }
+
+
+        byte[] subjectDirectoryBytes = certificate.getExtensionValue(Extension.subjectDirectoryAttributes.toString());
+        if (subjectDirectoryBytes != null) {
+            SubjectDirectoryAttributes subjectDirectoryAttributes = SubjectDirectoryAttributes.getInstance(X509ExtensionUtil
+                    .fromExtensionValue(subjectDirectoryBytes));
+            extensionsGenerator.addExtension(Extension.subjectDirectoryAttributes, isExtensionCritical(
+                    Extension.subjectDirectoryAttributes, certificate.getCriticalExtensionOIDs()), subjectDirectoryAttributes);
+        }
+
+        certificationRequestBuilder.addAttribute(PKCSObjectIdentifiers.pkcs_9_at_extensionRequest, extensionsGenerator.generate
+                ());
+
+        ContentSigner contentSigner = new JcaContentSignerBuilder(certificate.getSigAlgName())
+                .setProvider(PROVIDER_NAME).build(privateKey);
+
+        return certificationRequestBuilder.build(contentSigner);
+
+    }
+
+    static boolean isExtensionCritical(ASN1ObjectIdentifier extensionIdentifier, Set<String> criticalExtensionOIDs) {
+        for(String extensionOID : criticalExtensionOIDs) {
+            if(extensionOID.equals(extensionIdentifier.getId())) {
+                return true;
+            }
+        }
+        return false;
     }
 }

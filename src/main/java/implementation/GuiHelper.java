@@ -1,5 +1,6 @@
 package implementation;
 
+import org.bouncycastle.asn1.x509.Extension;
 import sun.security.ec.ECPrivateKeyImpl;
 import x509.v3.GuiV3;
 
@@ -12,8 +13,15 @@ import java.text.ParseException;
  */
 class GuiHelper {
 
+    static final int CERTIFICATE_POLICIES_ID = 3;
+
+    static final int SUBJECT_DIRECTORY_ATTRIBUTES_ID = 7;
     static final int PLACE_OF_BIRTH_ID = 0;
     static final int COUNTRY_OF_CITIZENSHIP_ID = 1;
+
+    static final int INHABIT_ANY_POLICY_ID = 13;
+
+
 
     private static GuiV3 access;
 
@@ -32,6 +40,7 @@ class GuiHelper {
         access.setNotAfter(certificate.getNotAfter());
         access.setNotBefore(certificate.getNotBefore());
         access.setPublicKeySignatureAlgorithm(certificate.getSigAlgName());
+        access.setIssuerSignatureAlgorithm(certificate.getSigAlgName());
         //access.setIssuerUniqueIdentifier(certificate.getIssuerUniqueID().toString());
     }
 
@@ -46,16 +55,22 @@ class GuiHelper {
     static void setCertificateExtensions(X509Certificate certificate) throws IOException, ParseException {
         String cpsUri = CertificateHelper.getCertificatePoliciesExtension(certificate);
         if(!cpsUri.isEmpty()) {
+            access.setCritical(CERTIFICATE_POLICIES_ID, CertificateHelper.isExtensionCritical(Extension.certificatePolicies,
+                    certificate.getCriticalExtensionOIDs()));
             access.setAnyPolicy(true);
             access.setCpsUri(cpsUri);
         }
         String skipCerts = CertificateHelper.getInhabitAnyPolicyExtension(certificate);
         if(!skipCerts.isEmpty()) {
+            access.setCritical(INHABIT_ANY_POLICY_ID, CertificateHelper.isExtensionCritical(Extension.inhibitAnyPolicy,
+                    certificate.getCriticalExtensionOIDs()));
             access.setInhibitAnyPolicy(true);
             access.setSkipCerts(skipCerts);
         }
         String[] subjectDirectoryData = CertificateHelper.getSubjectDirectoryExtension(certificate);
         if(subjectDirectoryData != null) {
+            access.setCritical(SUBJECT_DIRECTORY_ATTRIBUTES_ID, CertificateHelper.isExtensionCritical(Extension.subjectDirectoryAttributes,
+                    certificate.getCriticalExtensionOIDs()));
             access.setDateOfBirth(subjectDirectoryData[0]);
             access.setSubjectDirectoryAttribute(COUNTRY_OF_CITIZENSHIP_ID, subjectDirectoryData[1]);
             access.setSubjectDirectoryAttribute(PLACE_OF_BIRTH_ID, subjectDirectoryData[2]);
