@@ -1,5 +1,7 @@
 package implementation;
 
+import implementation.exceptions.CriticalExtensionException;
+import implementation.exceptions.NotCriticalExtensionException;
 import org.bouncycastle.asn1.*;
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers;
 import org.bouncycastle.asn1.x500.X500Name;
@@ -9,8 +11,10 @@ import org.bouncycastle.asn1.x509.*;
 import org.bouncycastle.asn1.x509.Extension;
 import org.bouncycastle.asn1.x509.PolicyInformation;
 import org.bouncycastle.asn1.x509.PolicyQualifierInfo;
+import org.bouncycastle.cert.CertIOException;
 import org.bouncycastle.cert.X509v3CertificateBuilder;
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter;
+import org.bouncycastle.cert.jcajce.JcaX509ExtensionUtils;
 import org.bouncycastle.jce.ECNamedCurveTable;
 import org.bouncycastle.jce.spec.ECParameterSpec;
 import org.bouncycastle.operator.ContentSigner;
@@ -20,6 +24,7 @@ import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.bouncycastle.pkcs.PKCS10CertificationRequestBuilder;
 import org.bouncycastle.pkcs.jcajce.JcaPKCS10CertificationRequestBuilder;
 import org.bouncycastle.x509.extension.X509ExtensionUtil;
+import org.bouncycastle.cert.X509ExtensionUtils;
 
 import java.io.IOException;
 import java.math.BigInteger;
@@ -77,10 +82,14 @@ class CertificateHelper {
 
     static void setSubjectDirectoryExtension(X509v3CertificateBuilder certificateBuilder, boolean isCritical,
                                              String dateOfBirth, String placeOfBirth, String countryOfCitizenship,
-                                             String gender) throws IOException, ParseException {
+                                             String gender) throws IOException, ParseException, CriticalExtensionException {
 
         if (dateOfBirth.isEmpty() || placeOfBirth.isEmpty() || countryOfCitizenship.isEmpty() || gender.isEmpty()) {
             return;
+        }
+
+        if(isCritical) {
+            throw new CriticalExtensionException(Extension.subjectDirectoryAttributes);
         }
 
         Vector<Attribute> attributes = new Vector<>();
@@ -99,8 +108,11 @@ class CertificateHelper {
 
     static void setInhabitAnyPolicyExtension(X509v3CertificateBuilder certificateBuilder,
                                              Boolean isCritical, boolean inhabitAnyPolicy, String skipCerts)
-            throws IOException {
+            throws IOException, NotCriticalExtensionException {
         if (inhabitAnyPolicy) {
+            if(!isCritical) {
+               throw new NotCriticalExtensionException(Extension.inhibitAnyPolicy);
+            }
             ASN1Integer skipCertsInteger = new ASN1Integer(new BigInteger(skipCerts));
             certificateBuilder.addExtension(Extension.inhibitAnyPolicy, isCritical, skipCertsInteger);
         }
@@ -117,6 +129,19 @@ class CertificateHelper {
         }
     }
 
+    static void setAuthorityKeyIdentifierExtension(X509v3CertificateBuilder certificateBuilder, boolean isCritical,
+                                                   X509Certificate caCertificate) throws NoSuchAlgorithmException, CertIOException {
+
+        JcaX509ExtensionUtils extensionUtils = new JcaX509ExtensionUtils();
+        SubjectKeyIdentifier subjectKeyIdentifier = extensionUtils.createSubjectKeyIdentifier(caCertificate.getPublicKey());
+        certificateBuilder.addExtension(Extension.subjectKeyIdentifier, false, subjectKeyIdentifier);
+        GeneralNames generalNames = new GeneralNames(new GeneralName(GeneralName.directoryName,
+                caCertificate.getIssuerDN().getName()));
+        AuthorityKeyIdentifier authorityKeyIdentifier = extensionUtils.createAuthorityKeyIdentifier(caCertificate.getPublicKey());
+        authorityKeyIdentifier = new AuthorityKeyIdentifier(authorityKeyIdentifier.getKeyIdentifier(), generalNames,
+                caCertificate.getSerialNumber());
+        certificateBuilder.addExtension(Extension.authorityKeyIdentifier, false, authorityKeyIdentifier);
+    }
 
     static String getCertificatePoliciesExtension(X509Certificate certificate) throws IOException {
         byte[] certificatePoliciesBytes = certificate.getExtensionValue(Extension.certificatePolicies.toString());
@@ -168,7 +193,6 @@ class CertificateHelper {
         return null;
     }
 
-
     static boolean isSelfSigned(X509Certificate certificate) {
         //certificate is self-signed -> trusted
         try {
@@ -216,8 +240,9 @@ class CertificateHelper {
                     Extension.subjectDirectoryAttributes, certificate.getCriticalExtensionOIDs()), subjectDirectoryAttributes);
         }
 
-        certificationRequestBuilder.addAttribute(PKCSObjectIdentifiers.pkcs_9_at_extensionRequest, extensionsGenerator.generate
-                ());
+        if(!extensionsGenerator.isEmpty()) {
+            certificationRequestBuilder.addAttribute(PKCSObjectIdentifiers.pkcs_9_at_extensionRequest, extensionsGenerator.generate());
+        }
 
         ContentSigner contentSigner = new JcaContentSignerBuilder(certificate.getSigAlgName())
                 .setProvider(PROVIDER_NAME).build(privateKey);

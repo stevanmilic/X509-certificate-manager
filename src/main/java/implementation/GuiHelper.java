@@ -40,8 +40,8 @@ class GuiHelper {
         access.setNotAfter(certificate.getNotAfter());
         access.setNotBefore(certificate.getNotBefore());
         access.setPublicKeySignatureAlgorithm(certificate.getSigAlgName());
-        access.setIssuerSignatureAlgorithm(certificate.getSigAlgName());
-        //access.setIssuerUniqueIdentifier(certificate.getIssuerUniqueID().toString());
+        access.setSubjectSignatureAlgorithm(certificate.getSigAlgName());
+        //access.setIssuerSignatureAlgorithm(certificate.getSigAlgOID());
     }
 
     static void setCertificateSubject(String subjectName) throws IOException {
