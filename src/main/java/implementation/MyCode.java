@@ -16,6 +16,7 @@ import org.bouncycastle.openssl.jcajce.JcaPEMWriter;
 import org.bouncycastle.operator.OperatorCreationException;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import sun.security.ec.ECPrivateKeyImpl;
+import sun.security.rsa.RSAPrivateCrtKeyImpl;
 import x509.v3.CodeV3;
 
 import java.io.*;
@@ -25,10 +26,7 @@ import java.security.cert.*;
 import java.security.cert.Certificate;
 import java.security.interfaces.RSAPrivateKey;
 import java.text.ParseException;
-import java.util.Collections;
-import java.util.Enumeration;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 
 import static implementation.GuiHelper.*;
 
@@ -101,8 +99,8 @@ public class MyCode extends CodeV3 {
 
             certificate.checkValidity();
 
-            if(localKeyStore.entryInstanceOf(s, KeyStore.TrustedCertificateEntry.class) || certificate.getBasicConstraints() != -1) {
-                //trusted certificate or ca certificate
+            if(localKeyStore.entryInstanceOf(s, KeyStore.TrustedCertificateEntry.class)) {
+                //trusted certificate
                 return 2;
             } else {
                 //certificate is self signed
@@ -238,8 +236,7 @@ public class MyCode extends CodeV3 {
                 }
             }
 
-            X509Certificate certificate = CertificateHelper.signCertificate(certificateBuilder, (PrivateKey) issuerPrivateKey,
-                    issuerCertificate.getSigAlgName());
+            X509Certificate certificate = CertificateHelper.signCertificate(certificateBuilder, (PrivateKey) issuerPrivateKey, s1);
 
             String alias = localKeyStore.getCertificateAlias(currentCertificate);
             localKeyStore.setKeyEntry(alias, issuerPrivateKey, new char[0], new Certificate[]{certificate});
@@ -304,9 +301,9 @@ public class MyCode extends CodeV3 {
     @Override
     public String getIssuerPublicKeyAlgorithm(String s) {
         try {
-            X509Certificate certificate = (X509Certificate) localKeyStore.getCertificate(s);
-            return certificate.getSigAlgName();
-        } catch (KeyStoreException e) {
+            Key key = localKeyStore.getKey(s, new char[0]);
+            return key.getAlgorithm();
+        } catch (KeyStoreException | UnrecoverableKeyException | NoSuchAlgorithmException e) {
             e.printStackTrace();
         }
         return null;
@@ -317,8 +314,8 @@ public class MyCode extends CodeV3 {
         try {
             Key key = localKeyStore.getKey(s, new char[0]);
             if(key instanceof RSAPrivateKey) {
-                RSAPrivateKey rsaPrivateKey = (RSAPrivateKey) key;
-                //TODO get rsa key length
+                RSAPrivateCrtKeyImpl rsaPrivateKey = (RSAPrivateCrtKeyImpl) key;
+                return rsaPrivateKey.getModulus().bitLength();
             }
         } catch (KeyStoreException | NoSuchAlgorithmException | UnrecoverableKeyException e) {
             e.printStackTrace();
@@ -334,6 +331,8 @@ public class MyCode extends CodeV3 {
 
             while (enumeration.hasMoreElements()) {
                 String alias = enumeration.nextElement();
+                if(alias.equals(s))
+                    continue;
                 if(((X509Certificate)localKeyStore.getCertificate(alias)).getBasicConstraints() != -1) {
                     issuers.add(alias);
                 }
