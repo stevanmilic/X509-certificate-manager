@@ -1,4 +1,5 @@
 EC
+RSA
 certificate policies
 subject directory attributes
 inhibit any policy

@@ -19,6 +19,7 @@ import org.bouncycastle.jce.ECNamedCurveTable;
 import org.bouncycastle.jce.spec.ECParameterSpec;
 import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.OperatorCreationException;
+import org.bouncycastle.operator.bc.BcRSAContentSignerBuilder;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.bouncycastle.pkcs.PKCS10CertificationRequestBuilder;
@@ -43,11 +44,17 @@ import static org.bouncycastle.jce.provider.BouncyCastleProvider.PROVIDER_NAME;
 
 class CertificateHelper {
 
-    static KeyPair generateKeyPair(String algorithm, String eccCurve) throws InvalidAlgorithmParameterException,
+    static KeyPair generateECKeyPair(String eccCurve) throws InvalidAlgorithmParameterException,
             NoSuchProviderException, NoSuchAlgorithmException {
-        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance(algorithm, PROVIDER_NAME);
+        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("EC", PROVIDER_NAME);
         ECParameterSpec parameterSpec = ECNamedCurveTable.getParameterSpec(eccCurve);
         keyPairGenerator.initialize(parameterSpec, new SecureRandom());
+        return keyPairGenerator.generateKeyPair();
+    }
+
+    static KeyPair generateRSAKeyPair(String keyLength) throws NoSuchProviderException, NoSuchAlgorithmException {
+        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+        keyPairGenerator.initialize(Integer.parseInt(keyLength));
         return keyPairGenerator.generateKeyPair();
     }
 
@@ -128,7 +135,12 @@ class CertificateHelper {
     }
 
     static void setAuthorityKeyIdentifierExtension(X509v3CertificateBuilder certificateBuilder, boolean isCritical,
-                                                   X509Certificate caCertificate) throws NoSuchAlgorithmException, CertIOException {
+                                                   X509Certificate caCertificate)
+            throws NoSuchAlgorithmException, CertIOException, CriticalExtensionException {
+
+        if(isCritical) {
+            throw new CriticalExtensionException(Extension.authorityKeyIdentifier);
+        }
 
         JcaX509ExtensionUtils extensionUtils = new JcaX509ExtensionUtils();
         SubjectKeyIdentifier subjectKeyIdentifier = extensionUtils.createSubjectKeyIdentifier(caCertificate.getPublicKey());
@@ -204,6 +216,7 @@ class CertificateHelper {
 
     static X509Certificate signCertificate(X509v3CertificateBuilder certificateBuilder, PrivateKey privateKey,
                                            String signatureAlgorithm) throws CertificateException, OperatorCreationException {
+        //new BcRSAContentSignerBuilder()
         ContentSigner contentSigner = new JcaContentSignerBuilder(signatureAlgorithm)
                 .setProvider(PROVIDER_NAME).build(privateKey);
         return new JcaX509CertificateConverter().setProvider(PROVIDER_NAME)
