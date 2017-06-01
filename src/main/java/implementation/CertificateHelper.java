@@ -19,7 +19,6 @@ import org.bouncycastle.jce.ECNamedCurveTable;
 import org.bouncycastle.jce.spec.ECParameterSpec;
 import org.bouncycastle.operator.ContentSigner;
 import org.bouncycastle.operator.OperatorCreationException;
-import org.bouncycastle.operator.bc.BcRSAContentSignerBuilder;
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder;
 import org.bouncycastle.pkcs.PKCS10CertificationRequest;
 import org.bouncycastle.pkcs.PKCS10CertificationRequestBuilder;
@@ -54,7 +53,7 @@ class CertificateHelper {
 
     static KeyPair generateRSAKeyPair(String keyLength) throws NoSuchProviderException, NoSuchAlgorithmException {
         KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
-        keyPairGenerator.initialize(Integer.parseInt(keyLength));
+        keyPairGenerator.initialize(Integer.parseInt(keyLength), new SecureRandom());
         return keyPairGenerator.generateKeyPair();
     }
 

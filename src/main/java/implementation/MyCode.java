@@ -227,10 +227,14 @@ public class MyCode extends CodeV3 {
             Key issuerPrivateKey = localKeyStore.getKey(s, new char[0]);
             X509Certificate issuerCertificate = (X509Certificate) localKeyStore.getCertificate(s);
 
-            X509v3CertificateBuilder certificateBuilder = new JcaX509v3CertificateBuilder(issuerCertificate
-                    .getIssuerX500Principal(), currentCertificate.getSerialNumber(), currentCertificate.getNotBefore(),
-                    currentCertificate.getNotAfter(), currentCertificate.getSubjectX500Principal(),
-                    issuerCertificate.getPublicKey());
+//            X500Name issuerName = new X500Name(issuerCertificate.getSubjectX500Principal().getName());
+//            X509v3CertificateBuilder certificateBuilder = new X509v3CertificateBuilder(issuerName, new BigInteger(access.getSerialNumber()),
+//                    access.getNotBefore(), access.getNotAfter(), currentCertificationRequest.getSubject(),
+//                    currentCertificationRequest.getSubjectPublicKeyInfo());
+
+            X509v3CertificateBuilder certificateBuilder = new JcaX509v3CertificateBuilder(issuerCertificate.getSubjectX500Principal(),
+                    currentCertificate.getSerialNumber(), currentCertificate.getNotBefore(),
+                    currentCertificate.getNotAfter(), currentCertificate.getSubjectX500Principal(), currentCertificate.getPublicKey());
 
 
             Attribute[] attributes = currentCertificationRequest.getAttributes();
@@ -254,13 +258,12 @@ public class MyCode extends CodeV3 {
             Certificate[] certificateChain = new Certificate[issuerCertificateChain.length + 1];
 
             int i = 0;
-
             certificateChain[i++] = certificate;
             for(Certificate issuerCertificateInChain : issuerCertificateChain) {
                certificateChain[i++] = issuerCertificateInChain;
             }
 
-            localKeyStore.setKeyEntry(alias, issuerPrivateKey, new char[0], certificateChain);
+            localKeyStore.setKeyEntry(alias, localKeyStore.getKey(alias, new char[0]), new char[0], certificateChain);
 
         } catch (KeyStoreException | NoSuchAlgorithmException | UnrecoverableKeyException | CertificateException
                 | OperatorCreationException | CertIOException | CriticalExtensionException e) {
