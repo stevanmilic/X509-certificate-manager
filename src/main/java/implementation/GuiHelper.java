@@ -6,6 +6,7 @@ import x509.v3.GuiV3;
 
 import java.io.IOException;
 import java.security.cert.X509Certificate;
+import java.security.interfaces.RSAPrivateKey;
 import java.text.ParseException;
 
 /**
@@ -29,9 +30,15 @@ class GuiHelper {
         GuiHelper.access = access;
     }
 
-    static void setCertificatePublicKey(ECPrivateKeyImpl privateKey) {
+    static void setCertificateECPublicKey(ECPrivateKeyImpl privateKey) {
         access.setPublicKeyAlgorithm(privateKey.getAlgorithm());
         access.setPublicKeyECCurve(privateKey.getParams().getCurve().toString());
+    }
+
+    static void setCertificateRSAPublicKey(RSAPrivateKey privateKey) {
+        access.setPublicKeyAlgorithm(privateKey.getAlgorithm());
+        access.setPublicKeyParameter(Integer.toString(privateKey.getModulus().bitLength()));
+
     }
 
     static void setCertificateInfo(X509Certificate certificate) {

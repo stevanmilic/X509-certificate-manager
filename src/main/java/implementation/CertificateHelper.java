@@ -112,11 +112,8 @@ class CertificateHelper {
 
     static void setInhabitAnyPolicyExtension(X509v3CertificateBuilder certificateBuilder,
                                              Boolean isCritical, boolean inhabitAnyPolicy, String skipCerts)
-            throws IOException, NotCriticalExtensionException {
+            throws IOException {
         if (inhabitAnyPolicy) {
-            if(!isCritical) {
-               throw new NotCriticalExtensionException(Extension.inhibitAnyPolicy);
-            }
             ASN1Integer skipCertsInteger = new ASN1Integer(new BigInteger(skipCerts));
             certificateBuilder.addExtension(Extension.inhibitAnyPolicy, isCritical, skipCertsInteger);
         }
@@ -203,19 +200,20 @@ class CertificateHelper {
     }
 
     static boolean isSelfSigned(X509Certificate certificate) {
-        //certificate is self-signed -> trusted
         try {
             certificate.verify(certificate.getPublicKey());
         } catch (CertificateException | NoSuchAlgorithmException | NoSuchProviderException | InvalidKeyException | SignatureException e) {
-            e.printStackTrace();
             return false;
         }
         return true;
     }
 
+    static boolean isCertificateAuthority(X509Certificate certificate) {
+            return isSelfSigned(certificate) && certificate.getBasicConstraints() != -1;
+    }
+
     static X509Certificate signCertificate(X509v3CertificateBuilder certificateBuilder, PrivateKey privateKey,
                                            String signatureAlgorithm) throws CertificateException, OperatorCreationException {
-        //new BcRSAContentSignerBuilder()
         ContentSigner contentSigner = new JcaContentSignerBuilder(signatureAlgorithm)
                 .setProvider(PROVIDER_NAME).build(privateKey);
         return new JcaX509CertificateConverter().setProvider(PROVIDER_NAME)

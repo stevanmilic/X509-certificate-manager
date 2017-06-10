@@ -80,7 +80,9 @@ public class MyCode extends CodeV3 {
         try {
             Key key = localKeyStore.getKey(s, new char[0]);
             if (key instanceof ECPrivateKeyImpl) {
-                GuiHelper.setCertificatePublicKey((ECPrivateKeyImpl) key);
+                GuiHelper.setCertificateECPublicKey((ECPrivateKeyImpl) key);
+            } else if(key instanceof  RSAPrivateKey) {
+                GuiHelper.setCertificateRSAPublicKey((RSAPrivateKey) key);
             }
 
             X509Certificate certificate = (X509Certificate) localKeyStore.getCertificate(s);
@@ -88,11 +90,6 @@ public class MyCode extends CodeV3 {
 
             GuiHelper.setCertificateInfo(certificate);
             GuiHelper.setCertificateSubject(certificate.getSubjectX500Principal().getName());
-
-            if(certificate.getSignature() == null) {
-                //certificate not signed
-                return 0;
-            }
 
             GuiHelper.setCertificateIssuer(certificate.getIssuerX500Principal().getName());
             GuiHelper.setCertificateExtensions(certificate);
@@ -102,8 +99,11 @@ public class MyCode extends CodeV3 {
             if(localKeyStore.entryInstanceOf(s, KeyStore.TrustedCertificateEntry.class)) {
                 //trusted certificate
                 return 2;
+            } else if(CertificateHelper.isSelfSigned(certificate) && certificate.getBasicConstraints() == -1){
+                //certificate is self signed and not CA
+                return 0;
             } else {
-                //certificate is signed
+                //certificate is signed or CA
                 return 1;
             }
         } catch (KeyStoreException | NoSuchAlgorithmException | UnrecoverableKeyException | IOException | ParseException
@@ -117,7 +117,7 @@ public class MyCode extends CodeV3 {
     public boolean saveKeypair(String s) {
         try {
 
-            if(localKeyStore.containsAlias(s)) {
+            if(localKeyStore.containsAlias(s) || access.getVersion() == 0) {
                 return false;
             }
 
@@ -158,7 +158,7 @@ public class MyCode extends CodeV3 {
 
         } catch (NoSuchAlgorithmException | InvalidAlgorithmParameterException | NoSuchProviderException
                 | OperatorCreationException | CertificateException | KeyStoreException | ParseException | IOException
-                | NotCriticalExtensionException | CriticalExtensionException e) {
+                | CriticalExtensionException e) {
             e.printStackTrace();
             return false;
         }
@@ -357,8 +357,20 @@ public class MyCode extends CodeV3 {
                 String alias = enumeration.nextElement();
                 if(alias.equals(s))
                     continue;
-                if(((X509Certificate)localKeyStore.getCertificate(alias)).getBasicConstraints() != -1) {
+                Certificate [] certificateChain = localKeyStore.getCertificateChain(alias);
+                if(certificateChain.length == 1 && CertificateHelper.isCertificateAuthority((X509Certificate) certificateChain[0])) {
                     issuers.add(alias);
+                } else {
+                    boolean validChain = true;
+                    for(int i = 0; i < certificateChain.length - 1; i++) {
+                        if(!((X509Certificate)certificateChain[i]).getIssuerX500Principal()
+                                .equals(((X509Certificate) certificateChain[i+1]).getSubjectX500Principal())){
+                            validChain = false;
+                        }
+                    }
+                    if(validChain && CertificateHelper.isCertificateAuthority((X509Certificate) certificateChain[certificateChain.length - 1])){
+                        issuers.add(alias);
+                    }
                 }
             }
 
