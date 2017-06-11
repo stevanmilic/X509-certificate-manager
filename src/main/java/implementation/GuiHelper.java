@@ -23,7 +23,6 @@ class GuiHelper {
     static final int INHABIT_ANY_POLICY_ID = 13;
 
 
-
     private static GuiV3 access;
 
     static void setAccess(GuiV3 access) {
@@ -60,21 +59,21 @@ class GuiHelper {
 
     static void setCertificateExtensions(X509Certificate certificate) throws IOException, ParseException {
         String cpsUri = CertificateHelper.getCertificatePoliciesExtension(certificate);
-        if(!cpsUri.isEmpty()) {
+        if (!cpsUri.isEmpty()) {
             access.setCritical(CERTIFICATE_POLICIES_ID, CertificateHelper.isExtensionCritical(Extension.certificatePolicies,
                     certificate.getCriticalExtensionOIDs()));
             access.setAnyPolicy(true);
             access.setCpsUri(cpsUri);
         }
         String skipCerts = CertificateHelper.getInhabitAnyPolicyExtension(certificate);
-        if(!skipCerts.isEmpty()) {
+        if (!skipCerts.isEmpty()) {
             access.setCritical(INHABIT_ANY_POLICY_ID, CertificateHelper.isExtensionCritical(Extension.inhibitAnyPolicy,
                     certificate.getCriticalExtensionOIDs()));
             access.setInhibitAnyPolicy(true);
             access.setSkipCerts(skipCerts);
         }
         String[] subjectDirectoryData = CertificateHelper.getSubjectDirectoryExtension(certificate);
-        if(subjectDirectoryData != null) {
+        if (subjectDirectoryData != null) {
             access.setCritical(SUBJECT_DIRECTORY_ATTRIBUTES_ID, CertificateHelper.isExtensionCritical(Extension.subjectDirectoryAttributes,
                     certificate.getCriticalExtensionOIDs()));
             access.setDateOfBirth(subjectDirectoryData[0]);

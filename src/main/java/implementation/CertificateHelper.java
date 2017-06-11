@@ -43,6 +43,8 @@ import static org.bouncycastle.jce.provider.BouncyCastleProvider.PROVIDER_NAME;
 
 class CertificateHelper {
 
+    private static final String SHA1withECDSA_OID = "1.2.840.10045.4.1";
+
     static KeyPair generateECKeyPair(String eccCurve) throws InvalidAlgorithmParameterException,
             NoSuchProviderException, NoSuchAlgorithmException {
         KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("EC", PROVIDER_NAME);
@@ -92,7 +94,7 @@ class CertificateHelper {
             return;
         }
 
-        if(isCritical) {
+        if (isCritical) {
             throw new CriticalExtensionException(Extension.subjectDirectoryAttributes);
         }
 
@@ -134,7 +136,7 @@ class CertificateHelper {
                                                    X509Certificate caCertificate)
             throws NoSuchAlgorithmException, CertIOException, CriticalExtensionException {
 
-        if(isCritical) {
+        if (isCritical) {
             throw new CriticalExtensionException(Extension.authorityKeyIdentifier);
         }
 
@@ -209,7 +211,7 @@ class CertificateHelper {
     }
 
     static boolean isCertificateAuthority(X509Certificate certificate) {
-            return isSelfSigned(certificate) && certificate.getBasicConstraints() != -1;
+        return isSelfSigned(certificate) && certificate.getBasicConstraints() != -1;
     }
 
     static X509Certificate signCertificate(X509v3CertificateBuilder certificateBuilder, PrivateKey privateKey,
@@ -226,7 +228,7 @@ class CertificateHelper {
 
         ExtensionsGenerator extensionsGenerator = new ExtensionsGenerator();
         byte[] certificatePoliciesBytes = certificate.getExtensionValue(Extension.certificatePolicies.toString());
-        if(certificatePoliciesBytes != null) {
+        if (certificatePoliciesBytes != null) {
             CertificatePolicies certificatePolicies = CertificatePolicies.getInstance(X509ExtensionUtil.fromExtensionValue(certificatePoliciesBytes));
             extensionsGenerator.addExtension(Extension.certificatePolicies, isExtensionCritical(Extension.certificatePolicies,
                     certificate.getCriticalExtensionOIDs()), certificatePolicies);
@@ -248,11 +250,16 @@ class CertificateHelper {
                     Extension.subjectDirectoryAttributes, certificate.getCriticalExtensionOIDs()), subjectDirectoryAttributes);
         }
 
-        if(!extensionsGenerator.isEmpty()) {
+        if (!extensionsGenerator.isEmpty()) {
             certificationRequestBuilder.addAttribute(PKCSObjectIdentifiers.pkcs_9_at_extensionRequest, extensionsGenerator.generate());
         }
 
-        ContentSigner contentSigner = new JcaContentSignerBuilder(certificate.getSigAlgName())
+        String sigAlgName = certificate.getSigAlgName();
+        if (certificate.getSigAlgOID().equals(SHA1withECDSA_OID)) {
+            sigAlgName = "SHA1withECDSA";
+        }
+
+        ContentSigner contentSigner = new JcaContentSignerBuilder(sigAlgName)
                 .setProvider(PROVIDER_NAME).build(privateKey);
 
         return certificationRequestBuilder.build(contentSigner);
@@ -260,8 +267,8 @@ class CertificateHelper {
     }
 
     static boolean isExtensionCritical(ASN1ObjectIdentifier extensionIdentifier, Set<String> criticalExtensionOIDs) {
-        for(String extensionOID : criticalExtensionOIDs) {
-            if(extensionOID.equals(extensionIdentifier.getId())) {
+        for (String extensionOID : criticalExtensionOIDs) {
+            if (extensionOID.equals(extensionIdentifier.getId())) {
                 return true;
             }
         }

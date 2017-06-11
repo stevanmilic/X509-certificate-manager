@@ -81,7 +81,7 @@ public class MyCode extends CodeV3 {
             Key key = localKeyStore.getKey(s, new char[0]);
             if (key instanceof ECPrivateKeyImpl) {
                 GuiHelper.setCertificateECPublicKey((ECPrivateKeyImpl) key);
-            } else if(key instanceof  RSAPrivateKey) {
+            } else if (key instanceof RSAPrivateKey) {
                 GuiHelper.setCertificateRSAPublicKey((RSAPrivateKey) key);
             }
 
@@ -96,10 +96,10 @@ public class MyCode extends CodeV3 {
 
             certificate.checkValidity();
 
-            if(localKeyStore.entryInstanceOf(s, KeyStore.TrustedCertificateEntry.class)) {
+            if (localKeyStore.entryInstanceOf(s, KeyStore.TrustedCertificateEntry.class)) {
                 //trusted certificate
                 return 2;
-            } else if(CertificateHelper.isSelfSigned(certificate) && certificate.getBasicConstraints() == -1){
+            } else if (CertificateHelper.isSelfSigned(certificate) && certificate.getBasicConstraints() == -1) {
                 //certificate is self signed and not CA
                 return 0;
             } else {
@@ -117,15 +117,15 @@ public class MyCode extends CodeV3 {
     public boolean saveKeypair(String s) {
         try {
 
-            if(localKeyStore.containsAlias(s) || access.getVersion() == 0) {
+            if (localKeyStore.containsAlias(s) || access.getVersion() == 0) {
                 return false;
             }
 
             KeyPair keyPair;
 
-            if(access.getPublicKeyAlgorithm().equals("EC")) {
+            if (access.getPublicKeyAlgorithm().equals("EC")) {
                 keyPair = CertificateHelper.generateECKeyPair(access.getPublicKeyECCurve());
-            } else if(access.getPublicKeyAlgorithm().equals("RSA")) {
+            } else if (access.getPublicKeyAlgorithm().equals("RSA")) {
                 keyPair = CertificateHelper.generateRSAKeyPair(access.getPublicKeyParameter());
             } else {
                 return false;
@@ -180,7 +180,7 @@ public class MyCode extends CodeV3 {
     public boolean importKeypair(String s, String s1, String s2) {
         try {
 
-            if(localKeyStore.containsAlias(s)) {
+            if (localKeyStore.containsAlias(s)) {
                 return false;
             }
 
@@ -238,11 +238,11 @@ public class MyCode extends CodeV3 {
 
 
             Attribute[] attributes = currentCertificationRequest.getAttributes();
-            if(attributes.length >= 1) {
+            if (attributes.length >= 1) {
                 Attribute attribute = attributes[0];
-                if(attribute.getAttrType() == PKCSObjectIdentifiers.pkcs_9_at_extensionRequest) {
+                if (attribute.getAttrType() == PKCSObjectIdentifiers.pkcs_9_at_extensionRequest) {
                     Extensions extensions = (Extensions) attribute.getAttrValues().getObjectAt(0);
-                    for(ASN1ObjectIdentifier extensionIdentifier : extensions.getExtensionOIDs()) {
+                    for (ASN1ObjectIdentifier extensionIdentifier : extensions.getExtensionOIDs()) {
                         certificateBuilder.addExtension(extensions.getExtension(extensionIdentifier));
                     }
                 }
@@ -259,8 +259,8 @@ public class MyCode extends CodeV3 {
 
             int i = 0;
             certificateChain[i++] = certificate;
-            for(Certificate issuerCertificateInChain : issuerCertificateChain) {
-               certificateChain[i++] = issuerCertificateInChain;
+            for (Certificate issuerCertificateInChain : issuerCertificateChain) {
+                certificateChain[i++] = issuerCertificateInChain;
             }
 
             localKeyStore.setKeyEntry(alias, localKeyStore.getKey(alias, new char[0]), new char[0], certificateChain);
@@ -277,7 +277,7 @@ public class MyCode extends CodeV3 {
     public boolean importCertificate(File file, String s) {
         try {
 
-            if(localKeyStore.containsAlias(s)) {
+            if (localKeyStore.containsAlias(s)) {
                 return false;
             }
 
@@ -337,7 +337,7 @@ public class MyCode extends CodeV3 {
     public int getRSAKeyLength(String s) {
         try {
             Key key = localKeyStore.getKey(s, new char[0]);
-            if(key instanceof RSAPrivateKey) {
+            if (key instanceof RSAPrivateKey) {
                 RSAPrivateCrtKeyImpl rsaPrivateKey = (RSAPrivateCrtKeyImpl) key;
                 return rsaPrivateKey.getModulus().bitLength();
             }
@@ -355,20 +355,26 @@ public class MyCode extends CodeV3 {
 
             while (enumeration.hasMoreElements()) {
                 String alias = enumeration.nextElement();
-                if(alias.equals(s))
+                if (alias.equals(s))
                     continue;
-                Certificate [] certificateChain = localKeyStore.getCertificateChain(alias);
-                if(certificateChain.length == 1 && CertificateHelper.isCertificateAuthority((X509Certificate) certificateChain[0])) {
-                    issuers.add(alias);
+                Certificate[] certificateChain = localKeyStore.getCertificateChain(alias);
+                if (certificateChain.length == 1) {
+                    if (CertificateHelper.isCertificateAuthority((X509Certificate) certificateChain[0])) {
+                        issuers.add(alias);
+                    }
                 } else {
                     boolean validChain = true;
-                    for(int i = 0; i < certificateChain.length - 1; i++) {
-                        if(!((X509Certificate)certificateChain[i]).getIssuerX500Principal()
-                                .equals(((X509Certificate) certificateChain[i+1]).getSubjectX500Principal())){
+                    if (!CertificateHelper.isCertificateAuthority((X509Certificate) certificateChain[0])) {
+                        validChain = false;
+                    }
+                    for (int i = 0; i < certificateChain.length - 1 && validChain; i++) {
+                        if (!((X509Certificate) certificateChain[i]).getIssuerX500Principal()
+                                .equals(((X509Certificate) certificateChain[i + 1]).getSubjectX500Principal())
+                                || !CertificateHelper.isCertificateAuthority((X509Certificate) certificateChain[i + 1])) {
                             validChain = false;
                         }
                     }
-                    if(validChain && CertificateHelper.isCertificateAuthority((X509Certificate) certificateChain[certificateChain.length - 1])){
+                    if (validChain) {
                         issuers.add(alias);
                     }
                 }
